@@ -12,156 +12,178 @@ const int EchoPin = 3;
 const int TriggerPin = 4;
 const int ButtonPin = 9;
 
-const int ALTURA_SENSOR_AGUA = 14;
-const double PRESION_NIVEL_MAR = 1013.25;
+                // ---------- VARIABLES ---------- //
 
+//Sensor Temperatura/Humedad (DHT22)
+struct SensorDht22{
+  float humidity;
+  float temp;
+};
+
+//Sensor Ultrasonico (HC-SR04)
+struct SensorHcSr04{
+  float rainedWater;
+  const float HIGH_SENSOR = 14;
+};
+
+//Sensor Presion Atmosferica (BMP180) 
+struct SensorBmp180{
+  double presionAtmos;
+  double altitude;
+  const double PRESION_NIVEL_MAR = 1013.25;
+};
+
+struct Sensores{
+  SensorDht22 Dht22;
+  SensorHcSr04 HcSr04;
+  SensorBmp180 Bmp180;
+}
+
+//Json
+struct Json{
+  StaticJsonDocument<200> jsonDocument;
+  String jsonString;
+};
+
+//Objetos
 #define DHTTYPE DHT22
-LiquidCrystal_I2C lcd(0x27, 20, 4);
-NewPing sonar(TriggerPin, EchoPin, 200);
-SFE_BMP180 bmp180;
-DHT dht(DHTPin, DHTTYPE);
+LiquidCrystal_I2C LCD(0x27, 20, 4);
+NewPing SONAR(TriggerPin, EchoPin, 200);
+SFE_BMP180 BMP180;
+DHT Dht(DHTPin, DHTTYPE);
 
-                // ------ DEFINICION ------ //
+
 void setup() {
   Serial.begin(9600);
+  Dht.begin();
+  BMP180.begin();  
   
   pinMode(TriggerPin, OUTPUT);
   pinMode(EchoPin, INPUT);
   digitalWrite(TriggerPin, LOW);
 
   pinMode(ButtonPin, INPUT_PULLUP);
-
-  dht.begin();
-
-  bmp180.begin();  
 }
-
-                // ---------- VARIABLES ---------- //
-
-//Sensor Temperatura/Humedad (DHT22)
-float humidity;
-float temp;
-
-//Sensor Ultrasonico (HC-SR04)
-float distanceCm;
-float highSensor;
-
-//Sensor Presion Atmosferica (BMP180) 
-double presionAtmos;
-double altitude;
-
-//Json
-StaticJsonDocument<200> jsonDocument;
-String jsonString;
 
                 // ------ MAIN ------ //
 void loop() {
+  Sensores sensores;
   bool valueButton = digitalRead(ButtonPin);
 
+  SensorDht22 dht22 = readDHT22();
+  SensorHcSr04 hc_sr04 = getRainedWater();
+  SensorBmp180 bmp180 = getAltitudeAndPresionAtmos();
+  sensores.Dht22 = dht22;
+  sensores.HcSr04 = hc_sr04;
+  sensores.Bmp180 = bmp180;
+  
+  Json jsonData = createJson(sensores);
+
   if(valueButton == HIGH){
-    
-    readDHT22(humidity, temp);
-    getRainedWater(distanceCm);
-    getAltitudeAndPresionAtmos(presionAtmos, altitude);
-    createJson(jsonDocument, jsonString, humidity, temp, presionAtmos, distanceCm, altitude);
-    showDisplayLcd(lcd, distanceCm, presionAtmos);
-    
+    showDisplayLcd(sensores);
     valueButton = false;
     delay(5000);
-    lcd.clear();
+    LCD.clear();
   }
-  lcd.noBacklight();
+  LCD.noBacklight();
 }
 
                 // ------ FUNCIONES PERSONALIZADAS ------ //
 
 //Obtiene la humedad y temperatura. Estos valores son obtenidos atraves del sensor DHT22
-void readDHT22(float& humidity, float& temp){
-  humidity = dht.readHumidity();
-  temp = dht.readTemperature();
+SensorDht22 readDHT22(){
+  SensorDht22 sensorDht22;
 
-  if (isnan(humidity) || isnan(temp)) {
-    humidity = -1;
-    temp = -1;
+  sensorDht22.humidity = Dht.readHumidity();
+  sensorDht22.temp = dht.readTemperature();
+
+  if (isnan(sensorDht22.humidity) || isnan( sensorDht22.temp)) {
+    sensorDht22.humidity = -1;
+     sensorDht22.temp = -1;
   }
+  return sensorDht22;
 }
 
 //Calcula la cantidad de agua llovida. Esto se logra utilizando el sensor HC-SR04
-void getRainedWater(float& distanceCm) {
+SensorHcSr04 getRainedWater() {
+  SensorHcSr04 sensorHcSr04;
+  int dist = SONAR.ping_cm();
+  sensorHcSr04.rainedWater = sensorHcSr04.HIGH_SENSOR - dist;
 
-  int dist = sonar.ping_cm();
-  distanceCm = ALTURA_SENSOR_AGUA - dist;
+  return sensorHcSr04;
   
 }
 //Obtiene la Presion Atmosferica y calcula la altitud
-void getAltitudeAndPresionAtmos(double& presion, double& altitude){
-
+SensorBmp180 getAltitudeAndPresionAtmos(){
+  SensorBmp180 sensorBmp180;
   char status;
   double T;
   
-  status = bmp180.startTemperature(); //Inicio de lectura de temperatura
+  status = BMP180.startTemperature(); //Inicio de lectura de temperatura
   if (status != 0)
   {   
     delay(status); //Pausa para que finalice la lectura
-    status = bmp180.getTemperature(T); //Obtener la temperatura
+    status = BMP180.getTemperature(T); //Obtener la temperatura
     if (status != 0)
     {
-      status = bmp180.startPressure(3); //Inicio lectura de presión
+      status = BMP180.startPressure(3); //Inicio lectura de presión
       if (status != 0)
       {        
         delay(status); //Pausa para que finalice la lectura        
-        status = bmp180.getPressure(presion, T); //Obtener la presión
+        status = BMP180.getPressure(sensorBmp180.presionAtmos, T); //Obtener la presión
         if (status != 0)
         {                  
-          altitude = bmp180.altitude(presion, PRESION_NIVEL_MAR); //Calcular altura    
+          sensorBmp180.altitude = BMP180.altitude(sensorBmp180.presionAtmos, SensorBmp180.PRESION_NIVEL_MAR); //Calcular altura    
         }      
       }      
     }   
-  } 
+  }
+  return sensorBmp180;
 }
 
 //Muestra la informacion procesada en el display LCD
-void showDisplayLcd(LiquidCrystal_I2C lcd, float distanceCm, double presion){
-  lcd.init();
-  lcd.clear();
-  lcd.backlight();
+void showDisplayLcd(Sensores sensores){
+  LCD.init();
+  LCD.clear();
+  LCD.backlight();
   
   // ------ TEMPERATURA - HUMEDAD ------ //
-  lcd.setCursor(0, 0);
-  lcd.print("Temp: ");
-  lcd.print(temp);
-  lcd.print("C");
+  LCD.setCursor(0, 0);
+  LCD.print("Temp: ");
+  LCD.print(sensores.Dht22.temp);
+  LCD.print("C");
 
-  lcd.setCursor(0, 1);
-  lcd.print("Hum: ");
-  lcd.print(humidity);
-  lcd.print("%");
+  LCD.setCursor(0, 1);
+  LCD.print("Hum: ");
+  LCD.print(sensores.Dht22.humidity);
+  LCD.print("%");
 
-  lcd.setCursor(0, 2);
-  lcd.print("Presion: ");
-  lcd.print(presion);
-  lcd.print(" Mbar");
+  LCD.setCursor(0, 2);
+  LCD.print("Presion: ");
+  LCD.print(sensores.Bmp180.presionAtmos);
+  LCD.print(" Mbar");
 
-  lcd.setCursor(0, 3);
-  lcd.print("Agua: ");
-  lcd.print(distanceCm);
-  lcd.print(" cm");
+  LCD.setCursor(0, 3);
+  LCD.print("Agua: ");
+  LCD.print(sensores.HcSr04.rainedWater);
+  LCD.print(" cm");
 }
 
 //Esta funcion sera utilizada para obtener la fecha
 void getDate(){
 }
 
-void createJson(StaticJsonDocument<200>& jsonDocument, String& jsonString, float hum, float temp, double pre_atmos, float rained_water, float altitude){
-  
-  jsonDocument["temperature"] = temp;
-  jsonDocument["humidity"] = hum;
-  jsonDocument["presion"] = pre_atmos;
-  jsonDocument["waterRained"] = rained_water;
-  jsonDocument["altitud"] = altitude;
+Json createJson(Sensores sensores){
+  Json jsonData;
+  jsonData.jsonDocument["temperature"] = sensores.Dht22.temp;
+  jsonData.jsonDocument["humidity"] = sensores.Dht22.humidity;
+  jsonData.jsonDocument["precipitacion"] = sensores.HcSr04.rainedWater;
+  jsonData.jsonDocument["presion"] = sensores.Bmp180.presionAtmos;
+  jsonData.jsonDocument["altitud"] = sensores.Bmp180.altitude;
   // jsonDocument["date"] = date;
 
-  serializeJson(jsonDocument, jsonString);
+  serializeJson(jsonData.jsonDocument, jsonData.jsonString);
+  return jsonData;
 }
 
 //En esta funcion se utilizaria el ESP8266 para enviar los datos al servidor
