@@ -63,7 +63,7 @@ void loop() {
     readDHT22(humidity, temp);
     getRainedWater(distanceCm);
     getAltitudeAndPresionAtmos(presionAtmos, altitude);
-    createJson(jsonDocument, jsonString, humidity, temp, presionAtmos, distanceCm);
+    createJson(jsonDocument, jsonString, humidity, temp, presionAtmos, distanceCm, altitude);
     showDisplayLcd(lcd, distanceCm, presionAtmos);
     
     valueButton = false;
@@ -148,18 +148,22 @@ void showDisplayLcd(LiquidCrystal_I2C lcd, float distanceCm, double presion){
   lcd.print(" cm");
 }
 
-void createJson(StaticJsonDocument<200>& jsonDocument, String& jsonString, float hum, float temp, double pre_atmos, float rained_water){
+//Esta funcion sera utilizada para obtener la fecha
+void getDate(){
+}
+
+void createJson(StaticJsonDocument<200>& jsonDocument, String& jsonString, float hum, float temp, double pre_atmos, float rained_water, float altitude){
   
   jsonDocument["temperature"] = temp;
   jsonDocument["humidity"] = hum;
-  jsonDocument["pre_atmos"] = pre_atmos;
-  jsonDocument["water_rained"] = rained_water;
+  jsonDocument["presion"] = pre_atmos;
+  jsonDocument["waterRained"] = rained_water;
+  jsonDocument["altitud"] = altitude;
+  // jsonDocument["date"] = date;
 
   serializeJson(jsonDocument, jsonString);
 }
 
+//En esta funcion se utilizaria el ESP8266 para enviar los datos al servidor
 void sendData(){
-  /*
-  En esta funcion se utilizaria el ESP8266 para enviar los datos al servidor
-  */
 }
