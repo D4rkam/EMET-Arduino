@@ -12,26 +12,17 @@
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
 
-                // ------ CONSTANTES ------ //
-#define DHTTYPE DHT22
-const int DHTPin = 5;
-const int EchoPin = 3;
-const int TriggerPin = 4;
-const int ButtonPin = 9;
-const unsigned long INTERVAL_HOUR = 3_600_000;
-const unsigned long LCD_DISPLAY_DURATION = 5000;
-
-                // ---------- VARIABLES ---------- //
-unsigned long previousMillis = 0;
-bool lcdActive = false;
-unsigned long lcdActivationTime = 0;
-
                 // ------ INSTANCIAS ------ //
 LiquidCrystal_I2C LCD(0x27, 20, 4);
 NewPing SONAR(TriggerPin, EchoPin, 200);
 SFE_BMP180 BMP180;
 DHT Dht(DHTPin, DHTTYPE);
 
+                // ---------- VARIABLES ---------- //
+
+unsigned long previousMillis = 0;
+bool lcdActive = false;
+unsigned long lcdActivationTime = 0;
 
 void setup() {
   Serial.begin(115200);

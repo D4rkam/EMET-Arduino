@@ -1,9 +1,24 @@
+//Config WiFi
 #define WIFI_SSID "TuSSID"
 #define WIFI_PASSWORD "TuClave"
 #define SERVER_URL "http://localhost:8080/api/upload"
 
+
+//Credenciales
 #define API_USERNAME "UsuarioAPI"
 #define API_PASSWORD "ClaveAPI"
+
+                // ------ CONSTANTES ------ //
+
+#define DHTTYPE DHT22
+const int DHTPin = 5;
+const int EchoPin = 3;
+const int TriggerPin = 4;
+const int ButtonPin = 9;
+const unsigned long INTERVAL_HOUR = 3600000;
+const unsigned long LCD_DISPLAY_DURATION = 5000;
+
+
 
 // Sensor Temperatura/Humedad (DHT22)
 struct SensorDht22
