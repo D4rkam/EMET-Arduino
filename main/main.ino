@@ -1,52 +1,32 @@
                 // ------ IMPORTACIONES ------ //
+#include "config.h"
+
 #include <LiquidCrystal_I2C.h>
-#include <ArduinoJson.h>
-#include <SFE_BMP180.h>
 #include <Wire.h>
+
+#include <SFE_BMP180.h>
 #include <NewPing.h>
 #include <DHT.h>
 
-                // ------ CONSTANTES/INSTANCIAS ------ //
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <ArduinoJson.h>
+
+                // ------ CONSTANTES ------ //
+#define DHTTYPE DHT22
 const int DHTPin = 5;
 const int EchoPin = 3;
 const int TriggerPin = 4;
 const int ButtonPin = 9;
+const unsigned long INTERVAL_HOUR = 3_600_000;
+const unsigned long LCD_DISPLAY_DURATION = 5000;
 
                 // ---------- VARIABLES ---------- //
+unsigned long previousMillis = 0;
+bool lcdActive = false;
+unsigned long lcdActivationTime = 0;
 
-//Sensor Temperatura/Humedad (DHT22)
-struct SensorDht22{
-  float humidity;
-  float temp;
-};
-
-//Sensor Ultrasonico (HC-SR04)
-struct SensorHcSr04{
-  float rainedWater;
-  const float HIGH_SENSOR = 14;
-};
-
-//Sensor Presion Atmosferica (BMP180) 
-struct SensorBmp180{
-  double presionAtmos;
-  double altitude;
-  const double PRESION_NIVEL_MAR = 1013.25;
-};
-
-struct Sensores{
-  SensorDht22 Dht22;
-  SensorHcSr04 HcSr04;
-  SensorBmp180 Bmp180;
-}
-
-//Json
-struct Json{
-  StaticJsonDocument<200> jsonDocument;
-  String jsonString;
-};
-
-//Objetos
-#define DHTTYPE DHT22
+                // ------ INSTANCIAS ------ //
 LiquidCrystal_I2C LCD(0x27, 20, 4);
 NewPing SONAR(TriggerPin, EchoPin, 200);
 SFE_BMP180 BMP180;
@@ -54,38 +34,53 @@ DHT Dht(DHTPin, DHTTYPE);
 
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Dht.begin();
   BMP180.begin();  
-  
+
   pinMode(TriggerPin, OUTPUT);
   pinMode(EchoPin, INPUT);
   digitalWrite(TriggerPin, LOW);
 
   pinMode(ButtonPin, INPUT_PULLUP);
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.println(ESP.getChipId()); //El ESP.getChipId() retorna la identificacion unica del chip
+
 }
 
                 // ------ MAIN ------ //
 void loop() {
+  unsigned long currentMillis = millis();
   Sensores sensores;
+
+  if (currentMillis - previousMillis >= INTERVAL_HOUR) {
+    previousMillis = currentMillis;
+    sensores = initSensores();
+    Json jsonData = createJson(sensores);
+    
+    if (jsonData.jsonString.length() == 0) {
+      Serial.println("Error al crear JSON. Datos no válidos.");
+    } 
+    else {
+      sendData(jsonData.jsonString);
+    }
+  }
+
   bool valueButton = digitalRead(ButtonPin);
-
-  SensorDht22 dht22 = readDHT22();
-  SensorHcSr04 hc_sr04 = getRainedWater();
-  SensorBmp180 bmp180 = getAltitudeAndPresionAtmos();
-  sensores.Dht22 = dht22;
-  sensores.HcSr04 = hc_sr04;
-  sensores.Bmp180 = bmp180;
-  
-  Json jsonData = createJson(sensores);
-
-  if(valueButton == HIGH){
+  if (valueButton == HIGH) {
+    lcdActive = true;
+    lcdActivationTime = currentMillis;
+    // Muestra el LCD
     showDisplayLcd(sensores);
     valueButton = false;
-    delay(5000);
-    LCD.clear();
   }
-  LCD.noBacklight();
+
+  // Verifica si se debe apagar el LCD después de cierto tiempo
+  if (lcdActive && (currentMillis - lcdActivationTime >= LCD_DISPLAY_DURATION)) {
+    LCD.clear();
+    lcdActive = false;
+  }
 }
 
                 // ------ FUNCIONES PERSONALIZADAS ------ //
@@ -94,13 +89,8 @@ void loop() {
 SensorDht22 readDHT22(){
   SensorDht22 sensorDht22;
 
-  sensorDht22.humidity = Dht.readHumidity();
-  sensorDht22.temp = dht.readTemperature();
-
-  if (isnan(sensorDht22.humidity) || isnan( sensorDht22.temp)) {
-    sensorDht22.humidity = -1;
-     sensorDht22.temp = -1;
-  }
+  sensorDht22.humidity = isnan(sensorDht22.humidity) ? -1 : Dht.readHumidity();
+  sensorDht22.temp = isnan(sensorDht22.temp) ? -1 : dht.readTemperature();
   return sensorDht22;
 }
 
@@ -180,12 +170,47 @@ Json createJson(Sensores sensores){
   jsonData.jsonDocument["precipitacion"] = sensores.HcSr04.rainedWater;
   jsonData.jsonDocument["presion"] = sensores.Bmp180.presionAtmos;
   jsonData.jsonDocument["altitud"] = sensores.Bmp180.altitude;
-  // jsonDocument["date"] = date;
+  jsonData.jsonDocument["date"] = "2023-10-12T12:00:00";
+  //jsonData.jsonDocument["locacion"] = ESP.getChipId();
 
   serializeJson(jsonData.jsonDocument, jsonData.jsonString);
   return jsonData;
 }
 
 //En esta funcion se utilizaria el ESP8266 para enviar los datos al servidor
-void sendData(){
+void sendData(String jsonData){
+  
+  if (WiFi.status() != WL_CONNECTED) {
+    //saveData(); -> Esta funcion guardaria los datos en una SD
+    Serial.println("No esta conectado a WiFi");
+  }
+
+  HTTPClient http;
+  http.begin(SERVER_URL);
+
+  http.addHeader("Content-Type", "application/json");
+
+  int httpResponseCode = http.POST(jsonData);
+
+  if (httpResponseCode > 0) {
+    Serial.print("Respuesta del servidor: ");
+    Serial.println(httpResponseCode);
+  } else {
+    Serial.print("Error en la solicitud. Código de error: ");
+    Serial.println(httpResponseCode);
+  }
+
+  http.end();
+}
+
+Sensores initSensores(){
+  Sensores sensores;
+
+  SensorDht22 dht22 = readDHT22();
+  SensorHcSr04 hc_sr04 = getRainedWater();
+  SensorBmp180 bmp180 = getAltitudeAndPresionAtmos();
+  sensores.Dht22 = dht22;
+  sensores.HcSr04 = hc_sr04;
+  sensores.Bmp180 = bmp180;
+  return sensores;
 }
